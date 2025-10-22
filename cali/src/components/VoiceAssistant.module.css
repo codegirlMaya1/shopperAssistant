@@ -1,0 +1,19 @@
+.voiceAssistant {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.micButton {
+  padding: 10px 20px;
+  font-size: 1.1rem;
+  border-radius: 8px;
+  background-color: #1d4ed8;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.transcript {
+  margin-top: 10px;
+  color: #333;
+}
