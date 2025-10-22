@@ -10,7 +10,7 @@ from openai import OpenAI
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173", "*"]}})
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-proj--your-key")
+AI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-proj--your-key")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 FAKESTORE_URL = "https://fakestoreapi.com/products"
