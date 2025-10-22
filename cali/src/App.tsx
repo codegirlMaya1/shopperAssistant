@@ -1,10 +1,11 @@
-
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import ProductList from "./components/ProductList";
 import VoiceAssistant from "./components/VoiceAssistant";
+import CouponForm from "./components/CouponForm";
 import { Product } from "./types";
 import "./App.css";
+import { useNavigate } from "react-router-dom";
 
 const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -13,6 +14,10 @@ const App: React.FC = () => {
   const [transcript, setTranscript] = useState("");
   const [status, setStatus] = useState<string>("");
   const [filters, setFilters] = useState<any>({});
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [showCoupon, setShowCoupon] = useState(false);
+  const [couponApplied, setCouponApplied] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     axios.get<Product[]>("https://fakestoreapi.com/products", { timeout: 15000 })
@@ -64,7 +69,13 @@ const App: React.FC = () => {
     if (act === "add_to_cart" && kw) {
       const fromAll = products.find((p) => p.title.toLowerCase().includes(kw)) || matches[0];
       if (fromAll) {
-        setCart((prev) => (prev.some((x) => x.id === fromAll.id) ? prev : [...prev, fromAll]));
+        setCart((prev) => {
+          const updated = prev.some((x) => x.id === fromAll.id) ? prev : [...prev, fromAll];
+          if (updated.length === 1 && !couponApplied) {
+            setShowCoupon(true);
+          }
+          return updated;
+        });
         speak(`Added ${fromAll.title} to your cart.`);
       } else {
         speak(`I couldn't find ${filters.product}.`);
@@ -82,13 +93,50 @@ const App: React.FC = () => {
 
     setFilteredProducts(matches.length > 0 ? matches : products);
     setStatus(`Filtered ${matches.length} item(s) from FakeStore`);
+
     if (matches.length > 0) {
       const top = matches.slice(0, 3).map((p) => `${p.title} for $${p.price.toFixed(2)}`).join(", ");
-      speak(`I found ${matches.length} items. Top results: ${top}.`);
+      speak(`Here’s what I found: ${top}.`);
+      setSelectedProduct(matches[0]); // ✅ Auto-read first product
     } else {
-      speak(`Sorry, I couldn't find anything matching "${rawText}".`);
+      speak(`Here’s what I found that might interest you. Let me know if you'd like to add any of these to your cart.`);
     }
   };
+
+  const handleProductClick = (product: Product) => {
+    setSelectedProduct(product);
+    speak(`${product.title}, priced at $${product.price.toFixed(2)}. ${product.description}. Would you like to add this to your cart?`);
+  };
+
+  const handleProductDecision = (decision: "yes" | "no" | "checkout" | "continue") => {
+    if (decision === "yes" && selectedProduct) {
+      setCart((prev) => {
+        const updated = prev.some((x) => x.id === selectedProduct.id) ? prev : [...prev, selectedProduct];
+        if (updated.length === 1 && !couponApplied) {
+          setShowCoupon(true);
+        }
+        return updated;
+      });
+      speak(`Added ${selectedProduct.title} to your cart.`);
+    }
+
+    if (decision === "checkout") {
+      const summary = cart.map((item) => `${item.title} for $${item.price.toFixed(2)}`).join(", ");
+      speak(`You have ${cart.length} items: ${summary}. Redirecting to checkout now.`);
+      navigate("/destination"); // ✅ Redirect to checkout
+    }
+
+    setSelectedProduct(null);
+  };
+
+  const handleCouponComplete = () => {
+    setCouponApplied(true);
+    setShowCoupon(false);
+    speak("Coupon applied! Your discount has been added.");
+  };
+
+  const cartTotal = cart.reduce((sum, item) => sum + item.price, 0);
+  const discountedTotal = couponApplied ? cartTotal * 0.8 : cartTotal;
 
   return (
     <div className="App" style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
@@ -101,7 +149,9 @@ const App: React.FC = () => {
         transcript={transcript}
         setTranscript={setTranscript}
         onVoiceResponse={handleVoiceResponse}
-        greetingText="Hi, I'm Sandy, your first greeter. Tell me what to find — like women’s dresses under 50 — and I’ll filter the store."
+        greetingText="Hi, I'm Samuel, your virtual shopper. Tell me what to find — like women’s dresses under 50 — and I’ll filter the store."
+        selectedProduct={selectedProduct}
+        onProductDecision={handleProductDecision}
       />
 
       {status && <p style={{ opacity: 0.8, marginTop: -6 }}>✅ {status}</p>}
@@ -117,19 +167,28 @@ const App: React.FC = () => {
       )}
 
       <h2 style={{ marginTop: 8 }}>Products</h2>
-      <ProductList products={filteredProducts} />
+      <ProductList products={filteredProducts} onProductClick={handleProductClick} />
+
+      {showCoupon && !couponApplied && (
+        <CouponForm onComplete={handleCouponComplete} />
+      )}
 
       <h2 style={{ marginTop: 24 }}>🛒 Your Cart</h2>
       {cart.length === 0 ? (
         <p>No items yet. Try: “add backpack to cart”.</p>
       ) : (
-        <ul>
-          {cart.map((item) => (
-            <li key={item.id}>
-              {item.title} — ${item.price.toFixed(2)}
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul>
+            {cart.map((item) => (
+              <li key={item.id}>
+                {item.title} — ${item.price.toFixed(2)}
+              </li>
+            ))}
+          </ul>
+          <p style={{ fontWeight: "bold", marginTop: 8 }}>
+            Total: ${discountedTotal.toFixed(2)} {couponApplied && <span>(20% discount applied)</span>}
+          </p>
+        </>
       )}
     </div>
   );

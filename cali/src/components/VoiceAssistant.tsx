@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
@@ -19,6 +18,8 @@ export interface VoiceAssistantProps {
     rawText: string
   ) => void;
   greetingText?: string;
+  selectedProduct?: any;
+  onProductDecision?: (decision: "yes" | "no" | "checkout" | "continue") => void;
 }
 
 type BackendContext = {
@@ -48,7 +49,9 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   transcript,
   setTranscript,
   onVoiceResponse,
-  greetingText = "Hi, I'm Sandy, your personal shopping assistant. Say things like: a dress under 50 dollars, or men’s shirts under 25.",
+  greetingText = "Hi, I'm Samuel, your personal shopping assistant. Say things like: a dress under 50 dollars, or men’s shirts under 25.",
+  selectedProduct,
+  onProductDecision,
 }) => {
   const {
     transcript: liveTranscript,
@@ -66,26 +69,12 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   const lastHeardRef = useRef<number>(0);
   const contextRef = useRef<BackendContext>({ last_filters: {}, pending_slots: [] });
 
-  const salesPrompts = [
-    "This one might be perfect for you!",
-    "How about this option?",
-    "You might love this one!",
-    "This could be just what you're looking for!",
-    "A great choice for your style!",
-    "This is one of our bestsellers!",
-    "Customers love this one!",
-    "This might be a great fit for you!",
-    "A popular pick—want to add it to your cart?",
-    "This is a favorite among our shoppers!"
-  ];
-
   const speak = (text: string, onEnd?: () => void) => {
     try { SpeechRecognition.stopListening(); } catch {}
     speakingRef.current = true;
     try { window.speechSynthesis.cancel(); } catch {}
 
     const utter = new SpeechSynthesisUtterance(text);
-
     const pickVoice = () => {
       const voices = window.speechSynthesis.getVoices();
       const female =
@@ -171,8 +160,40 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
     }, SILENCE_DEBOUNCE_MS) as unknown as number;
   }, [liveTranscript]);
 
+  useEffect(() => {
+    if (selectedProduct) {
+      const description = `${selectedProduct.title}, priced at $${selectedProduct.price.toFixed(2)}. ${selectedProduct.description || ''}`;
+      speak(description, () => {
+        speak("Would you like to add this to your cart?");
+      });
+    }
+  }, [selectedProduct]);
+
   const sendToBackend = async (spoken: string) => {
     if (!spoken) return;
+
+    const lower = spoken.toLowerCase();
+
+    if (selectedProduct) {
+      if (lower.includes("yes")) {
+        speak(`Great! Adding ${selectedProduct.title} to your cart. Would you like to keep shopping or checkout?`);
+        onProductDecision?.("yes");
+        return;
+      } else if (lower.includes("no")) {
+        speak("No problem. Click on another item you're interested in.");
+        onProductDecision?.("no");
+        return;
+      } else if (lower.includes("checkout")) {
+        speak("You’re about to checkout. Confirming your cart now.");
+        onProductDecision?.("checkout");
+        return;
+      } else if (lower.includes("keep shopping") || lower.includes("continue")) {
+        speak("Okay, keep browsing and click on another item when you're ready.");
+        onProductDecision?.("continue");
+        return;
+      }
+    }
+
     try {
       const res = await axios.post<ParseResponse>(
         "http://localhost:5000/parse-voice",
@@ -189,11 +210,7 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
 
       let responseText = "";
       if (matches.length > 0) {
-        responseText = "Here’s what I found: ";
-        matches.slice(0, 3).forEach((item) => {
-          const prompt = salesPrompts[Math.floor(Math.random() * salesPrompts.length)];
-          responseText += `${item.title} for $${item.price.toFixed(2)}. ${prompt} `;
-        });
+        responseText = "Here’s what I found. Click on the item you're interested in.";
       } else {
         responseText = "Here’s what I found that might interest you. Let me know if you'd like to add any of these to your cart.";
       }
@@ -203,7 +220,7 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       resetTranscript();
     } catch (err) {
       console.error("Backend parse error:", err);
-      speak("Sorry, I didn’t catch that. Try asking for something like women’s dresses under 50 or men’s jackets.");
+      speak("Sorry, I didn’t catch that. We have sales and coupons available. Are you interested?");
     }
   };
 
